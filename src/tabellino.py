@@ -44,7 +44,8 @@ prompt_template = """
 
 **Oggetto: Elaborazione Statistica Avanzata da Stream JSON – Basket**
 
-"Agisci come un software di analisi dati sportivi. Riceverai in input un dataset in formato JSON che contiene la cronologia degli eventi di una partita di basket. Il tuo compito è aggregare questi dati per generare il box score finale.
+"Agisci come un software di analisi dati sportivi. Riceverai in input un dataset in formato JSON che contiene la cronologia degli eventi di una partita di basket. 
+Il tuo compito è aggregare questi dati per generare il box score finale.
 
 **ISTRUZIONI DI CALCOLO:**
 
@@ -76,7 +77,8 @@ Se presenti, usa i dati di punteggio parziale dagli eventi per controllare la co
 **2. Box Score Individuale (Ponte Vecchio):**
 Genera una tabella con le seguenti colonne:
 
-* **NUM** (Numero) | **MIN** (Minuti MM:SS) | **PTS** (Punti)
+* **NUM** (Numero) | **NOME** | 
+* **MIN** (Minuti MM:SS) | **PTS** (Punti)
 * **FGM/FGA** | **FG%**
 * **2PM/2PA** | **2P%**
 * **3PM/3PA** | **3P%**
@@ -85,6 +87,9 @@ Genera una tabella con le seguenti colonne:
 * **PIR EFF** (Valutazione)
 
 Includi la riga dei **TOTALI** di squadra.
+
+Questi i nomi delle giocatrici della squadra Ponte Vecchio con i rispettivi numeri di maglia:
+{rosa_ponte_vecchio}
 
 **DATASET JSON DA ELABORARE:**
 {trascrizione}
@@ -99,48 +104,49 @@ def main():
        system_prompt=("Sei un'esperta di calcolo di statistiche per partite di basket.")
     )
 
-    # Get folder containing .txt transcription files from command line
-    parser = argparse.ArgumentParser(description="Analyze concatenated transcription files in a folder")
-    parser.add_argument("transcription_dir", nargs="?", default="/basket_stats_assistant/data", help="Path to folder containing .result transcription files")
+    parser = argparse.ArgumentParser(description="Generate tabellino from a single .result file and a roster file")
+    parser.add_argument('input_file', help='Path to the .result (or transcription) input file to analyze')
+    parser.add_argument('--roster', dest='roster', default='/basket_stats_assistant/data/formazione_PV.txt', help='Path to roster file (default: /basket_stats_assistant/data/formazione_PV.txt)')
     args = parser.parse_args()
 
     from pathlib import Path
-    transcription_dir = Path(args.transcription_dir)
-    if not transcription_dir.exists() or not transcription_dir.is_dir():
-        logging.error(f"Transcription directory does not exist or is not a directory: {transcription_dir}")
+    input_path = Path(args.input_file)
+    if not input_path.exists() or not input_path.is_file():
+        logging.error(f"Input file does not exist or is not a file: {input_path}")
         sys.exit(1)
 
-    # Read and concatenate all .txt files in the directory (non-recursive), sorted by name
-    txt_files = sorted(transcription_dir.glob("*.result"))
-    if not txt_files:
-        logging.warning(f"No .result transcription files found in {transcription_dir}")
-        loaded_transcription = ""
+    roster_path = Path(args.roster)
+    loaded_roster = ''
+    if roster_path.exists() and roster_path.is_file():
+        try:
+            loaded_roster = roster_path.read_text(encoding='utf-8')
+        except Exception as e:
+            logging.error(f"Failed to read roster file {roster_path}: {e}")
+            loaded_roster = ''
     else:
-        parts = []
-        for p in txt_files:
-            try:
-                text = p.read_text(encoding='utf-8')
-                parts.append(text)
-            except Exception as e:
-                logging.error(f"Failed to read {p}: {e}")
-        loaded_transcription = "\n\n".join(parts)
+        logging.warning(f"Roster file not found, continuing with empty roster: {roster_path}")
 
-    # Build prompt using the loaded transcription
-    prompt = prompt_template.format(trascrizione=loaded_transcription)
+    try:
+        loaded_transcription = input_path.read_text(encoding='utf-8')
+    except Exception as e:
+        logging.error(f"Failed to read input file {input_path}: {e}")
+        sys.exit(1)
 
-    logging.info("prompt = {}".format(prompt))
+    # Build prompt using the loaded transcription and roster
+    prompt = prompt_template.format(trascrizione=loaded_transcription, rosa_ponte_vecchio=loaded_roster)
 
+    logging.info("Invoking LLM...")
     messages = [HumanMessage(content=prompt)]
     response = llm.invoke(messages)
     response_content = response.content
 
-    # Write the result to a single .result file in the same folder
-    output_path = transcription_dir / f"{transcription_dir.name}.tabellino"
+    # Write the result to a .tabellino file with same basename as input
+    output_path = input_path.with_suffix('.tabellino')
     try:
         output_path.write_text(response_content, encoding='utf-8')
-        logging.info(f"Wrote analysis result to {output_path}")
+        logging.info(f"Wrote tabellino result to {output_path}")
     except Exception as e:
-        logging.error(f"Failed to write result file {output_path}: {e}")
+        logging.error(f"Failed to write tabellino file {output_path}: {e}")
 
 
 if __name__ == '__main__':
