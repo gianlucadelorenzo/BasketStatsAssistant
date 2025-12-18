@@ -1,0 +1,19 @@
+nome, numero
+Viola, 11
+Aurora, 14
+DeLo, 15
+Maria Elena, 21
+Lucia, 22
+Anita, 23
+Sara, 25
+Colli, 29
+Michela, 30
+Lulu, 36
+Gaia, 38
+Metru, 40
+Marta, 41
+Irene, 43
+Tugno, 45
+Neri, 53
+Stella, 54
+Martina, 55
