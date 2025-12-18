@@ -141,7 +141,7 @@ def main():
     response_content = response.content
 
     # Write the result to a .tabellino file with same basename as input
-    output_path = input_path.with_suffix('.tabellino')
+    output_path = input_path.with_suffix('.tabellino.md')
     try:
         output_path.write_text(response_content, encoding='utf-8')
         logging.info(f"Wrote tabellino result to {output_path}")
