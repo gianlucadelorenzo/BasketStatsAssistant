@@ -88,6 +88,10 @@ Genera una tabella con le seguenti colonne:
 
 Includi la riga dei **TOTALI** di squadra.
 
+Alla fine dell'analisi controlla la correttezza dei risultati ricontando, per ogni giocatrice, 
+i canestri realizzati facendo attenzione ai punti per ogni canestro, i tiri sbagliati anche qui facendo attenzione al tipo di tiro,
+e i minuti giocati.  Sistema eventuali discrepanze trovate correggendo i tabellini di conseguenza.
+
 Questi i nomi delle giocatrici della squadra Ponte Vecchio con i rispettivi numeri di maglia:
 {rosa_ponte_vecchio}
 
