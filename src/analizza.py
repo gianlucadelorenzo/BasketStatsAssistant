@@ -53,9 +53,9 @@ Hai a disposizione una trascrizione approssimativa di una registrazione audio co
     possono essere utili per correggere eventuali errori nella trascrizione principale.
     
     - La trascrizione può contenere errori.  Gli errori più comuni sono: 
-        -- omissione di una sostituzione
-        -- nome della squadra avversaria errato
-        -- omissione di un canestro della squadra avversaria.
+        -- omissione di una sostituzione: te ne accorgi perché la formazione in campo cambia senza che ci sia stata una sostituzione registrata nella trascrizione. In questo caso devi dedurre quale giocatrice è entrata e quale è uscita in base alla formazione in campo prima e dopo il cambio e aggiungere l'evento corretto alla lista.
+        -- nome della squadra avversaria errato: devi correggerlo in base al contesto della partita (data, luogo, ecc.).
+        -- omissione di un canestro della squadra avversaria: aggiungi un evento per il canestro mancante in base al punteggio parziale indicato nella trascrizione scegliendo un momento plausibile in cui il canestro potrebbe essere avvenuto.
     Devi essere in grado di correggere gli errori e fornire l'interpretazione più accurata possibile.
 
     Il tuo compito è quello di analizzare la trascrizione e trasformarla in una lista di azioni in formato json.  
@@ -91,6 +91,10 @@ Hai a disposizione una trascrizione approssimativa di una registrazione audio co
         ]
     }
 
+    Non confondere giocatore_in e giocatore_out con giocatore:
+    - giocatore_in e giocatore_out sono usati solo per le sostituzioni e indicano il numero della giocatrice che entra o esce dal campo.
+    - giocatore è usato per tutte le altre azioni (canestro, tiro sbagliato, fallo, ecc.) e indica il numero della giocatrice che compie l'azione.
+
     L'intestazione deve contenere tutte le informazioni di contesto che riesci ad estrarre dalla trascrizione (data, luogo, descrizione della partita, ecc.).
     La lista "eventi" deve contenere un oggetto per ogni azione significativa avvenuta durante la partita.
     Esempio di azioni significative:
@@ -108,7 +112,13 @@ Hai a disposizione una trascrizione approssimativa di una registrazione audio co
     - Formazione in campo: indica quarto, minuto, secondo, formazione_ponte_vecchio
     - Canestro avversari: indica quarto, minuto, secondo, punti_avversari
 
-    Importante: all'inizio di ogni quarto crea un evento con la formazione iniziale: quarto, minuto=0, secondo=0, formazione_ponte_vecchio=[#,#,#,#,#].
+    Indicazioni aggiuntive: 
+    - all'inizio di ogni quarto crea un evento per ciascuna delle cinque giocatrici della formazione iniziale: quarto, minuto=10, secondo=0, giocatore_in=int, giocatore_out=null.  OBBLIGATORIO: questi eventi devono essere i PRIMI CINQUE EVENTI di ogni quarto.  Tutto il resto spostalo dopo questi eventi.
+    - alla fine di ogni quarto crea un evento per ciascuna delle cinque giocatrici in campo al termine del quarto: quarto, minuto=0, secondo=0, giocatore_in=null, giocatore_out=int.  OBBLIGATORIO: questi eventi devono essere gli ULTIMI CINQUE EVENTI di ogni quarto.  Tutto il resto spostalo prima di questi eventi.
+    - i campi "punteggio_ponte_vecchio", "punteggio_avversari" e "formazione_ponte_vecchio" devono sempre essere riempiti per ogni evento:
+    se nulla cambia, copia i valori dall'evento precedente.  Se invece avviene un cambio o vengono segnati dei punti, aggiornali.
+
+    IMPORTANTISSIMO: l'output deve essere un JSON valido senza alcuna aggiunta di testo prima o dopo il JSON stesso.
     
     ----------------------------------------------
 
@@ -119,9 +129,9 @@ Hai a disposizione una trascrizione approssimativa di una registrazione audio co
 def main():
     # Initialize LLM inside main to avoid side-effects at import time
     llm = init_llm(
-       model_name='gpt-4o',
+       model_name='gemini-2.5-pro',
        temperature=0.1,
-       max_tokens=16384,
+       max_tokens=65536,
        system_prompt=("Sei un'esperta di calcolo di statistiche per partite di basket.")
     )
 
@@ -136,35 +146,38 @@ def main():
         logging.error(f"Transcription directory does not exist or is not a directory: {transcription_dir}")
         sys.exit(1)
 
-    # Read and concatenate all .txt files in the directory (non-recursive), sorted by name
+    # Process each .txt file individually and write one .result per input file
     txt_files = sorted(transcription_dir.glob("*.txt"))
     if not txt_files:
         logging.warning(f"No .txt transcription files found in {transcription_dir}")
-        loaded_transcription = ""
-    else:
-        parts = []
-        for p in txt_files:
-            try:
-                text = p.read_text(encoding='utf-8')
-                parts.append(text)
-            except Exception as e:
-                logging.error(f"Failed to read {p}: {e}")
-        loaded_transcription = "\n\n".join(parts)
+        return
 
-    # Build prompt using the loaded transcription (safe replacement to avoid formatting conflicts)
-    prompt = prompt_template.replace('<<<TRASCRIZIONE>>>', loaded_transcription)
+    for p in txt_files:
+        try:
+            logging.info(f"Processing file: {p}")
+            loaded_transcription = p.read_text(encoding='utf-8')
+        except Exception as e:
+            logging.error(f"Failed to read {p}: {e}")
+            continue
 
-    messages = [HumanMessage(content=prompt)]
-    response = llm.invoke(messages)
-    response_content = response.content
+        # Build prompt using the loaded transcription (safe replacement to avoid formatting conflicts)
+        prompt = prompt_template.replace('<<<TRASCRIZIONE>>>', loaded_transcription)
 
-    # Write the result to a single .result file in the same folder
-    output_path = transcription_dir / f"{transcription_dir.name}.result"
-    try:
-        output_path.write_text(response_content, encoding='utf-8')
-        logging.info(f"Wrote analysis result to {output_path}")
-    except Exception as e:
-        logging.error(f"Failed to write result file {output_path}: {e}")
+        messages = [HumanMessage(content=prompt)]
+        try:
+            response = llm.invoke(messages)
+            response_content = response.content
+        except Exception as e:
+            logging.error(f"LLM invocation failed for {p}: {e}")
+            continue
+
+        # Write the result next to the input file with .result extension
+        output_path = p.with_suffix('.result')
+        try:
+            output_path.write_text(response_content, encoding='utf-8')
+            logging.info(f"Wrote analysis result to {output_path}")
+        except Exception as e:
+            logging.error(f"Failed to write result file {output_path}: {e}")
 
 
 if __name__ == '__main__':
